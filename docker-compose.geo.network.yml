@@ -1,0 +1,19 @@
+# Override optionnel : fait rejoindre `geo-sync` au reseau Docker externe du
+# noeud `rudi-node-container`, pour joindre le manager/catalogue par leurs noms
+# de service Docker (`rudi-manager`, `rudi-catalog`) au lieu de passer par des
+# ports hote publies. Voir README.md "Joindre le noeud via son reseau Docker".
+#
+# Usage :
+#   docker compose -f docker-compose.geo.yml -f docker-compose.geo.network.yml up -d --build
+name: rudi-mapserver
+
+services:
+  geo-sync:
+    networks:
+      - default
+      - rudi-node
+
+networks:
+  rudi-node:
+    external: true
+    name: ${RUDI_NODE_NETWORK:-rudinode_rudi-net}

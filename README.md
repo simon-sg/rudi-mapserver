@@ -14,8 +14,18 @@ build. Voir `KNOWN_ISSUES.md` pour les limites constatees pendant le pilotage.
 ## Deployer
 
 Prerequis : Docker avec le plugin Compose (commande `docker compose`), et un
-`rudi-node-container` deja demarre (catalog joignable sur le port 4030, fichiers
-dans `source-media/`).
+`rudi-node-container` deja demarre (catalog et manager joignables, fichiers dans
+`source-media/`).
+
+**Verifiez les ports reels de votre noeud avant de lancer la stack.**
+`.env.example` est livre avec les ports du harnais de developpement local
+(`RUDI_CATALOG_PORT=4030`, `RUDI_MANAGER_PORT=4032`) ; un `rudi-node-container`
+standard publie en realite le catalogue sur le port 3030 et le manager sur le
+port 3032 (dans ses quatre variantes de deploiement). Si vous visez un
+`rudi-node-container`, ajustez `RUDI_CATALOG_PORT` et `RUDI_MANAGER_PORT` dans
+`.env` en consequence avant de lancer `docker compose up` (sinon le
+synchroniseur ne trouve pas le catalogue, et le self-declare du manager echoue
+en warning silencieux).
 
 ```bash
 git clone <url> rudi-mapserver
@@ -30,12 +40,39 @@ Le fichier `.env` (modele dans `.env.example`) permet d'ajuster le chemin du
 volume media du noeud (`RUDI_NODE_MEDIA_DIR`), l'hote et les ports du catalogue
 et du manager, les identifiants Rudi, et l'URL publique des flux. Sans `.env`,
 les defauts supposent un `rudi-node-container` voisin
-(`../rudi-node-container/source-media`) et le noeud local sur les ports
-habituels : un `docker compose up` "zero config" fonctionne dans ce cas.
+(`../rudi-node-container/source-media`) ; pensez a verifier les ports comme
+indique ci-dessus avant de lancer la stack.
 
 Le noeud source natif tourne via `rudi-node-build/start-source-node.sh` (catalog
-sur le port 4030) et `rudi-node-build/rudi-node-container/source-media/` contient
-les fichiers ; ce depot ne fait que les lire en lecture seule.
+sur le port 4030, manager sur le port 4032, tous deux publies sur `127.0.0.1`
+uniquement) et `rudi-node-build/rudi-node-container/source-media/` contient
+les fichiers ; ce depot ne fait que les lire en lecture seule. C'est ce harnais
+local qui a dicte les defauts `4030`/`4032` de `.env.example`.
+
+## Joindre le noeud via son reseau Docker (au lieu des ports hote)
+
+Par defaut, `geo-sync` joint le catalogue et le manager via
+`host.docker.internal` et des ports hote publies. Si le noeud tourne sur la
+meme machine en conteneurs et que l'on veut eviter de dependre de ports hote
+publies (par exemple un manager durci plus tard, ou un pare-feu local), un
+override optionnel fait rejoindre a `geo-sync` le reseau Docker externe du
+noeud, pour joindre `rudi-manager`/`rudi-catalog` par leurs noms de service :
+
+```bash
+# Si rudi-node-container tourne sur la meme machine en conteneurs et
+# qu'on veut eviter de dependre de ports hote publies :
+echo "RUDI_MANAGER_HOST=rudi-manager" >> .env
+echo "RUDI_CATALOG_HOST=rudi-catalog" >> .env
+docker compose -f docker-compose.geo.yml -f docker-compose.geo.network.yml up -d --build
+```
+
+`docker-compose.geo.network.yml` suppose que le reseau Docker du noeud s'appelle
+`rudinode_rudi-net` (defaut de `rudi-node-container` pour ses variantes a
+services separes) ; surchargez-le via `RUDI_NODE_NETWORK` dans `.env` s'il
+differe. Cette variante ne s'applique pas a `-host.yml` (deja en
+`network_mode: host`, ou `host.docker.internal` revient a joindre directement
+l'hote). Reste **optionnel** : le comportement par defaut
+(`host.docker.internal`) fonctionne sans cette etape.
 
 ## Endpoints
 
@@ -190,6 +227,8 @@ de rudi-mapserver ne bloque jamais la publication des donnees elle-meme.
   (`camptocamp/mapserver:8.6.0`, sans pip) plus `python3-pip` et
   `rudi-node-write`, afin que `geo-sync` puisse declarer les services lui-meme.
 - `.env.example` -- modele de configuration (a copier en `.env`, jamais commite).
+- `docker-compose.geo.network.yml` -- override optionnel : fait rejoindre a
+  `geo-sync` le reseau Docker externe du noeud (voir ci-dessus).
 - `mapfiles/mapserver.conf` -- config MapServer (alias `RUDI`, lecture seule).
 - `mapfiles/apache-pna.conf`, `mapfiles/nginx-tls.conf`, `mapfiles/tls/` --
   Private Network Access + terminaison HTTPS locale pour les clients publics
