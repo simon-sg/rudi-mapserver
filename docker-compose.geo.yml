@@ -1,0 +1,97 @@
+# Brique SIG optionnelle pour le noeud Rudi : deux conteneurs, lecture seule
+# sur le volume media du noeud, aucune base de donnees, aucune copie.
+# - geo-sync   : lit le catalogue, (re)genere le mapfile MapServer a chaque cycle
+# - mapserver  : WMS, WFS *et* OGC API Features (portail Rudi, MapStore, datahub)
+#
+# OGC API Features est servi par MapServer lui-meme : l'alias de mapfile doit
+# etre le premier segment du chemin (RFC ms-rfc-134), jamais un ?map= classique
+# -- voir README.md "Endpoints" et KNOWN_ISSUES.md point 1 pour le detail.
+#
+# Prerequis : le noeud source natif tourne deja (catalog sur le port 4030) et
+# source-media/ contient les fichiers. Voir README.md.
+#
+# Usage :
+#   docker compose -f docker-compose.geo.yml up -d
+#   docker compose -f docker-compose.geo.yml logs -f geo-sync
+
+name: rudi-mapserver
+services:
+  geo-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile.geo-sync
+    container_name: rudi_geo_sync
+    entrypoint: ["python3"]
+    command: ["/app/sync.py"]
+    environment:
+      CATALOG_URL: "http://${RUDI_CATALOG_HOST:-host.docker.internal}:${RUDI_CATALOG_PORT:-4030}/catalog/v1"
+      CATALOG_PUBLIC_URL: "http://localhost:${RUDI_CATALOG_PORT:-4030}/catalog/v1"
+      MEDIA_DIR: "/data/media"
+      MAPFILE_OUT: "/etc/mapserver/generated/rudi.map"
+      VRT_DIR: "/etc/mapserver/generated"
+      MANIFEST_OUT: "/etc/mapserver/generated/manifest.json"
+      SYNC_INTERVAL_S: "60"
+      NODE_PUBLIC_URL: "${RUDI_GEO_PUBLIC_BASE:-https://localhost:8444}"
+      OGCAPI_PUBLIC_URL: "http://localhost:8089/RUDI/ogcapi"
+      METADATA_DIR: "/etc/mapserver/generated/metadata"
+      METADATA_PUBLIC_URL: "http://localhost:8090"
+      # declare_services.py, appele par sync.py lui-meme apres chaque cycle
+      # (voir synchronizer/sync.py::self_declare) : ces variables surchargent
+      # les defauts prevus pour un appel cote hote (localement faux depuis un
+      # conteneur).
+      MANIFEST_PATH: "/etc/mapserver/generated/manifest.json"
+      RUDI_MANAGER_URL: "http://${RUDI_MANAGER_HOST:-host.docker.internal}:${RUDI_MANAGER_PORT:-4032}/manager"
+      RUDI_USER: "${RUDI_USER:-admin}"
+      RUDI_PASSWORD: "${RUDI_PASSWORD:-admin}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./synchronizer/sync.py:/app/sync.py:ro
+      - ./declare_services.py:/app/declare_services.py:ro
+      - ${RUDI_NODE_MEDIA_DIR:-../rudi-node-container/source-media}:/data/media:ro
+      - ./generated:/etc/mapserver/generated:rw
+    restart: unless-stopped
+
+  mapserver:
+    image: camptocamp/mapserver:8.6.0
+    container_name: rudi_geo_mapserver
+    ports:
+      - "8089:80"
+    environment:
+      MAPSERVER_CONFIG_FILE: "/etc/mapserver.conf"
+    volumes:
+      - ./mapfiles/mapserver.conf:/etc/mapserver.conf:ro
+      - ./mapfiles/apache-pna.conf:/etc/apache2/conf-enabled/zzz-pna.conf:ro
+      - ${RUDI_NODE_MEDIA_DIR:-../rudi-node-container/source-media}:/data/media:ro
+      - ./generated:/etc/mapserver/generated:ro
+    depends_on:
+      - geo-sync
+    restart: unless-stopped
+
+  mapserver-tls:
+    image: nginx:1.27-alpine
+    container_name: rudi_geo_mapserver_tls
+    ports:
+      - "8444:443"
+    volumes:
+      - ./mapfiles/nginx-tls.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./mapfiles/tls:/etc/nginx/tls:ro
+    depends_on:
+      - mapserver
+    restart: unless-stopped
+
+  geo-metadata:
+    # Serveur statique dedie aux fiches de metadonnees (XML) referencees par
+    # wms_metadataurl_href : ne peut pas vivre sur le port 8089, dont le
+    # ScriptAliasMatch de l'image MapServer capte deja tout le chemin "/"
+    # (voir KNOWN_ISSUES.md).
+    image: nginx:1.27-alpine
+    container_name: rudi_geo_metadata
+    ports:
+      - "8090:80"
+    volumes:
+      - ./mapfiles/nginx-metadata.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./generated/metadata:/usr/share/nginx/html:ro
+    depends_on:
+      - geo-sync
+    restart: unless-stopped
