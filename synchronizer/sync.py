@@ -35,12 +35,12 @@ logging.basicConfig(
 log = logging.getLogger("rudi-mapserver-sync")
 
 # --- Configuration (variables d'environnement) -----------------------------
-CATALOG_URL = os.environ.get("CATALOG_URL", "http://host.docker.internal:4030/catalog/v1")
+CATALOG_URL = os.environ.get("CATALOG_URL", "http://host.docker.internal:3030/catalog/v1")
 # URL du catalogue telle qu'un navigateur peut l'atteindre (CATALOG_URL ne
 # l'est pas : host.docker.internal n'existe que depuis l'interieur des
 # conteneurs) -- utilisee uniquement pour le lien de retour dans les fiches
 # de metadonnees.
-CATALOG_PUBLIC_URL = os.environ.get("CATALOG_PUBLIC_URL", "http://localhost:4030/catalog/v1")
+CATALOG_PUBLIC_URL = os.environ.get("CATALOG_PUBLIC_URL", "http://localhost:3030/catalog/v1")
 MEDIA_DIR = Path(os.environ.get("MEDIA_DIR", "/data/media"))
 MAPFILE_OUT = Path(os.environ.get("MAPFILE_OUT", "/etc/mapserver/generated/rudi.map"))
 VRT_DIR = Path(os.environ.get("VRT_DIR", "/etc/mapserver/generated"))
@@ -64,9 +64,9 @@ METADATA_DIR = Path(os.environ.get("METADATA_DIR", "/etc/mapserver/generated/met
 METADATA_PUBLIC_URL = os.environ.get("METADATA_PUBLIC_URL", "http://localhost:8090")
 # Au-dela de ce seuil, la source est convertie en FlatGeobuf (indexe
 # spatialement) plutot que relue entierement par MapServer/OGR a chaque
-# requete -- deroge au "zero copie" du pilote pour les quelques fichiers qui
-# en ont reellement besoin (voir KNOWN_ISSUES.md). 5 Mo capture les ~13
-# fichiers les plus lourds du noeud local sans toucher aux ~540 autres.
+# requete -- deroge au "zero copie" pour les quelques fichiers qui en ont
+# reellement besoin (voir KNOWN_ISSUES.md). 5 Mo capture les fichiers les
+# plus lourds sans toucher aux autres.
 FGB_DIR = VRT_DIR / "fgb"
 FLATGEOBUF_THRESHOLD_BYTES = int(os.environ.get("FLATGEOBUF_THRESHOLD_MB", "5")) * 1024 * 1024
 
@@ -136,7 +136,7 @@ def iter_candidate_media(resources):
 # sur le volume du noeud. iter_candidate_media() les ignore totalement (ce ne
 # sont pas des FILE) -- see KNOWN_ISSUES.md : on choisit de les RECENSER,
 # jamais de les relayer (pas de dependance de dispo sur un service tiers,
-# pas de question d'attribution/charge a trancher pour un pilote).
+# ni de question d'attribution/charge a assumer).
 EXTERNAL_SERVICE_NAMES = {"service-wfs", "service-wms", "service-geojson"}
 
 
@@ -383,7 +383,7 @@ def materialize_flatgeobuf(media_id, src_path, src_layer_name):
     spatial integre) : MapServer peut alors filtrer par bbox sans relire tout
     le fichier a chaque requete. Traite comme un cache jetable, jamais une
     source de verite -- regenere si absent ou plus vieux que la source,
-    jamais lu par rien d'autre que ce pilote. Retourne None (et laisse
+    jamais lu par rien d'autre que ce service. Retourne None (et laisse
     l'appelant retomber sur la source d'origine) si la conversion echoue."""
     FGB_DIR.mkdir(parents=True, exist_ok=True)
     fgb_path = FGB_DIR / f"{media_id}.fgb"

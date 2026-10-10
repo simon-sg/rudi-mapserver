@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Declare, sur le catalogue Rudi local, un media SERVICE par protocole (WMS,
-WFS, OGC API Features) pour chaque resource qui a au moins une couche
-publiee par le pilote rudi-mapserver -- pour que le catalogue/portail Rudi
-affiche "cette ressource a aussi un flux WMS/WFS disponible ici", comme il
-le fait deja pour les flux externes (data.geopf.fr...).
+Declare, sur le catalogue d'un noeud Rudi, un media SERVICE par protocole
+(WMS, WFS, OGC API Features) pour chaque resource qui a au moins une couche
+publiee par rudi-mapserver -- pour que le catalogue/portail Rudi affiche
+"cette ressource a aussi un flux WMS/WFS disponible ici", comme il le fait
+deja pour les flux externes (data.geopf.fr...).
 
 Lit generated/manifest.json (cle "resources_with_layers", ecrite par
 synchronizer/sync.py) ; n'interroge jamais le catalogue pour decouvrir les
@@ -19,8 +19,8 @@ etant idempotent) :
     synchroniseur quand le jeu de couches publiees change (voir
     synchronizer/sync.py::self_declare) -- c'est ce qui permet a un simple
     `docker compose up` de tout declarer, sans pipeline externe ;
-  - cote hote, pour un humain ou le pipeline moissonneuse-batteuse (voisin),
-    avec la librairie installee localement :
+  - cote hote, pour un humain ou un pipeline externe de publication, avec la
+    librairie installee localement :
 
     pip install --user rudi-node-write
     python3 declare_services.py            # dry-run : affiche ce qui serait fait
@@ -44,7 +44,7 @@ except ImportError:
     sys.exit(1)
 
 MANIFEST_PATH = Path(os.environ.get("MANIFEST_PATH", Path(__file__).parent / "generated" / "manifest.json"))
-MANAGER_URL = os.environ.get("RUDI_MANAGER_URL", "http://localhost:4032/manager")
+MANAGER_URL = os.environ.get("RUDI_MANAGER_URL", "http://localhost:3032/manager")
 RUDI_USER = os.environ.get("RUDI_USER", "admin")
 RUDI_PASSWORD = os.environ.get("RUDI_PASSWORD", "admin")
 
@@ -95,9 +95,9 @@ OGCAPI_COLLECTIONS_URL = os.environ.get("RUDI_GEO_OGCAPI_URL", "https://localhos
 # connue, reutilisation de "wfs" (meme nature : acces aux entites) plutot
 # qu'une nouvelle valeur non verifiee -- voir KNOWN_ISSUES.md.
 PROTOCOLS = {
-    "wms": {"interface_contract": "wms", "caption": "Flux WMS du noeud local (pilote rudi-mapserver)"},
-    "wfs": {"interface_contract": "wfs", "caption": "Flux WFS du noeud local (pilote rudi-mapserver)"},
-    "ogcapi": {"interface_contract": "wfs", "caption": "Flux OGC API Features du noeud local (pilote rudi-mapserver)"},
+    "wms": {"interface_contract": "wms", "caption": "Flux WMS du noeud (rudi-mapserver)"},
+    "wfs": {"interface_contract": "wfs", "caption": "Flux WFS du noeud (rudi-mapserver)"},
+    "ogcapi": {"interface_contract": "wfs", "caption": "Flux OGC API Features du noeud (rudi-mapserver)"},
 }
 
 # Prefixe commun a tous les media_name qu'on gere ici -- sert a reperer, parmi
@@ -189,6 +189,7 @@ def plan_for_resource(writer, entry, apply_changes):
             and existant_connector.get("url") == conf["url"]
             and existant_connector.get("interface_contract") == conf["interface_contract"]
             and existant_connector.get("connector_parameters") == conf["connector_parameters"]
+            and existant.get("media_caption") == conf["caption"]
         ):
             continue  # deja a jour, rien a faire
         connector = {"url": conf["url"], "interface_contract": conf["interface_contract"]}

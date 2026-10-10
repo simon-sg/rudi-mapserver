@@ -7,8 +7,8 @@
 # etre le premier segment du chemin (RFC ms-rfc-134), jamais un ?map= classique
 # -- voir README.md "Endpoints" et KNOWN_ISSUES.md point 1 pour le detail.
 #
-# Prerequis : le noeud source natif tourne deja (catalog sur le port 4030) et
-# source-media/ contient les fichiers. Voir README.md.
+# Prerequis : un noeud Rudi deja demarre (catalog et manager joignables) et
+# son repertoire de medias accessible. Voir README.md.
 #
 # Usage :
 #   docker compose -f docker-compose.geo.yml up -d
@@ -24,8 +24,8 @@ services:
     entrypoint: ["python3"]
     command: ["/app/sync.py"]
     environment:
-      CATALOG_URL: "http://${RUDI_CATALOG_HOST:-host.docker.internal}:${RUDI_CATALOG_PORT:-4030}/catalog/v1"
-      CATALOG_PUBLIC_URL: "http://localhost:${RUDI_CATALOG_PORT:-4030}/catalog/v1"
+      CATALOG_URL: "http://${RUDI_CATALOG_HOST:-host.docker.internal}:${RUDI_CATALOG_PORT:-3030}/catalog/v1"
+      CATALOG_PUBLIC_URL: "http://localhost:${RUDI_CATALOG_PORT:-3030}/catalog/v1"
       MEDIA_DIR: "/data/media"
       MAPFILE_OUT: "/etc/mapserver/generated/rudi.map"
       VRT_DIR: "/etc/mapserver/generated"
@@ -40,7 +40,7 @@ services:
       # les defauts prevus pour un appel cote hote (localement faux depuis un
       # conteneur).
       MANIFEST_PATH: "/etc/mapserver/generated/manifest.json"
-      RUDI_MANAGER_URL: "http://${RUDI_MANAGER_HOST:-host.docker.internal}:${RUDI_MANAGER_PORT:-4032}/manager"
+      RUDI_MANAGER_URL: "http://${RUDI_MANAGER_HOST:-host.docker.internal}:${RUDI_MANAGER_PORT:-3032}/manager"
       RUDI_USER: "${RUDI_USER:-admin}"
       RUDI_PASSWORD: "${RUDI_PASSWORD:-admin}"
     extra_hosts:

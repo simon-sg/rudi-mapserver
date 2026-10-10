@@ -1,9 +1,8 @@
-# Limites connues du pilote (constatees le 2026-10-09)
+# Limites connues
 
-Issues trouvees en montant le pilote decrit dans la note d'architecture
-"Services SIG sur les fichiers d'un noeud Rudi", sur `camptocamp/mapserver:8.6.0`
-(MapServer 8.6.0 / GDAL 3.12.1), contre les vraies donnees du noeud source local
-(`rudi-node-build/rudi-node-container/source-media`).
+Comportements et limites constates en mettant en place rudi-mapserver sur
+`camptocamp/mapserver:8.6.0` (MapServer 8.6.0 / GDAL 3.12.1), contre les
+donnees reelles d'un noeud Rudi.
 
 ## 1. OGC API Features -- RESOLU : c'est un probleme d'URL, pas de bug bloquant
 
@@ -343,10 +342,10 @@ requete qui porte deux valeurs contradictoires pour le meme parametre.
 affiche exactement le meme symptome -- "Aucune metadonnee disponible" et
 "Aucune fonctionnalite disponible" / "aucun objet" dans la table. Un
 service de reference, par ailleurs reconnu conforme, produit le meme
-echec : **ce n'est donc pas un bug du noeud pilote, mais une limitation
+echec : **ce n'est donc pas un bug du noeud, mais une limitation
 (ou un bug) de cette instance MapStore elle-meme**, qui touche
-indistinctement n'importe quel service WFS. Rien a corriger cote pilote
-au-dela des points deja traites plus haut (Abstract/KeywordList,
+indistinctement n'importe quel service WFS. Rien a corriger cote
+rudi-mapserver au-dela des points deja traites plus haut (Abstract/KeywordList,
 formats, pagination) -- ils restent necessaires et corrects, seulement
 pas suffisants pour ce client particulier.
 
@@ -386,8 +385,8 @@ avec une cle SSH). En pratique :
   [`rudi-node-write`](https://pypi.org/project/rudi-node-write/), qui gere
   toute la complexite d'authentification en interne.
 - Elle ne parle **pas directement au catalogue** mais au module **manager**
-  du noeud (port 4032), avec une authentification **utilisateur/mot de
-  passe** (`admin`/`admin` sur un noeud de dev) -- le manager se charge
+  du noeud, avec une authentification **utilisateur/mot de passe**
+  (`admin`/`admin` sur un noeud de dev) -- le manager se charge
   lui-meme de forger le JWT (signe EdDSA avec une cle SSH ed25519,
   `source-keys/catalog_mngr`) pour parler au catalogue en notre nom.
   Aucun JWT a manipuler soi-meme.
@@ -403,7 +402,7 @@ avec une cle SSH). En pratique :
   d'ecraser des champs qu'on n'a pas touches).
 
 Voir `declare_services.py` : implemente et teste sur les 117 ressources
-du noeud local ayant au moins une couche publiee par ce pilote.
+du noeud ayant au moins une couche publiee.
 
 ## 10ter. Conversion FlatGeobuf des gros fichiers : `-overwrite` incompatible avec un format mono-couche -- RESOLU
 
@@ -420,7 +419,7 @@ ERROR 1: DeleteLayer() failed when overwrite requested.
 FlatGeobuf (un fichier = une couche, rien a "supprimer a l'interieur").
 Fonctionne sans probleme sur un format multi-couches (GeoPackage...), d'ou
 la confusion initiale (c'est le pattern habituel partout ailleurs dans ce
-pilote).
+projet).
 
 **Correction** : supprimer le fichier de sortie nous-memes
 (`fgb_path.unlink(missing_ok=True)`) avant l'appel, sans `-overwrite`.
@@ -453,7 +452,7 @@ s'appuyer sur le JSON pour GetFeatureInfo.
 144 medias GeoJSON sur les 1257 candidats sont ignores car OGR rapporte un type de
 geometrie generique `Geometry` (FeatureCollection a geometries melangees). Confirme
 le point "limites" de la note : extension possible plus tard (scinder par type de
-geometrie), hors scope du pilote.
+geometrie), hors scope de rudi-mapserver.
 
 ## 14. Relais via le portail (`/medias/.../wms`) : redirection `/login` trompeuse -- cause identifiee, pas resolue en local
 
@@ -488,8 +487,8 @@ d'hote public) fonctionne parfaitement via ce meme relais.
 
 Ce n'est donc ni un bug RUDI, ni une lacune structurelle de la synchronisation
 metadonnee noeud -> portail (celle-ci fonctionne). C'est un artefact pur de
-topologie locale : deux services independants (`mapserver-tls` du pilote,
-`apigateway` du portail) qui choisissent, par hasard, le meme port (8443) sur
+topologie locale : deux services independants (`mapserver-tls` de
+rudi-mapserver, `apigateway` du portail) qui choisissent, par hasard, le meme port (8443) sur
 la meme machine, et un conteneur qui ne peut jamais, par construction
 Docker, atteindre un AUTRE conteneur ni l'hote via `localhost`.
 
@@ -579,7 +578,7 @@ des nouveaux.
 
 ## 16. Declaration autonome des services depuis `geo-sync` : couche pip dediee et cadence -- a reporter dans la note d'architecture
 
-Depuis l'extraction du pilote en depot autonome `rudi-mapserver`, le conteneur
+Depuis l'extraction en depot autonome `rudi-mapserver`, le conteneur
 `geo-sync` declare lui-meme les medias SERVICE apres chaque cycle ou le jeu de
 couches publiees change (`RUDI_GEO_SELF_DECLARE`, actif par defaut) : un simple
 `docker compose up` suffit alors, sans pipeline externe. Deux points a signaler
@@ -595,13 +594,13 @@ dans la note :
 - **Cadence** : la declaration n'est declenchee que si le hash du contenu trie
   de `resources_with_layers` change (pas toutes les 60s sur un catalogue
   inchange), et jamais au prix de la boucle de sync (try/except, warning en cas
-  d'echec, retente au cycle suivant). L'appel deja existant depuis
-  `moissonneuse-batteuse` (cote hote) reste inchange et cohabite sans conflit :
-  `declare_services.py` est idempotent.
+  d'echec, retente au cycle suivant). Un appel externe (hote ou pipeline
+  tiers) a `declare_services.py` reste toujours possible en parallele, sans
+  conflit : le script est idempotent.
 
 ## Resultats de la recette automatique (`test_services.py`)
 
-8 / 8 controles passes contre les vraies donnees du noeud source local (581 couches
+8 / 8 controles passes contre les donnees reelles d'un noeud Rudi (581 couches
 publiees sur 1257 medias candidats, 396 resources) : WMS GetCapabilities/GetMap/
 GetFeatureInfo (GML), WFS GetFeature (GeoJSON, EPSG:3857) et OGC API Features
 natif (`/RUDI/ogcapi/collections`, `.../items`) sont tous verifies, avec un seul
