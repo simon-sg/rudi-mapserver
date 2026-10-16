@@ -73,6 +73,13 @@ FLATGEOBUF_THRESHOLD_BYTES = int(os.environ.get("FLATGEOBUF_THRESHOLD_MB", "5"))
 # MIME types eligibles (cote noeud, voir rudi-catalog FileTypes.js)
 GEO_MIMES = {"text/csv", "application/geo+json", "application/geopackage+sqlite3"}
 
+# Restreint les resources traitees a cet ensemble de local_id (CSV) -- indispensable sur un
+# noeud externe potentiellement partage : l'API catalogue liste TOUTES les resources du noeud,
+# pas seulement les notres, et self_declare() ecrirait sinon des services sur des resources
+# qui ne nous appartiennent pas. Vide (defaut) = aucune restriction, comportement inchange sur
+# un noeud dedie (tout le catalogue est a nous).
+LOCAL_ID_ALLOWLIST = {s.strip() for s in os.environ.get("LOCAL_ID_ALLOWLIST", "").split(",") if s.strip()}
+
 X_TOKENS = {"x", "lon", "long", "longitude", "lng"}
 Y_TOKENS = {"y", "lat", "latitude"}
 
@@ -641,6 +648,9 @@ def run_cycle():
     VRT_DIR.mkdir(parents=True, exist_ok=True)
     resources = fetch_resources()
     log.info("Catalogue: %d resources recuperees", len(resources))
+    if LOCAL_ID_ALLOWLIST:
+        resources = [r for r in resources if r.get("local_id") in LOCAL_ID_ALLOWLIST]
+        log.info("Restreint a %d resources (LOCAL_ID_ALLOWLIST)", len(resources))
 
     layer_blocks = []
     manifest = {
