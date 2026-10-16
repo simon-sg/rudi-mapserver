@@ -183,10 +183,12 @@ def locate_file(media_id, media=None):
         return Path(matches[0])
     # Volume local absent (noeud distant, ex. demo sur un noeud externe) : le media est
     # deja en open data sans authentification, donc telechargeable directement par OGR/GDAL
-    # via /vsicurl/ -- ogrinfo/ogr2ogr et le VRT genere l'acceptent comme n'importe quelle
-    # autre chaine de connexion, sans telechargement manuel prealable.
+    # -- ogrinfo/ogr2ogr et le VRT genere acceptent n'importe quelle chaine de connexion,
+    # sans telechargement manuel prealable. /vsicurl_streaming/ (lecture sequentielle, pas
+    # de requete Range) plutot que /vsicurl/ : le storage du noeud source ne supporte pas
+    # les requetes HTTP Range ("Range downloading not supported by this server").
     url = (media or {}).get("connector", {}).get("url")
-    return f"/vsicurl/{url}" if url else None
+    return f"/vsicurl_streaming/{url}" if url else None
 
 
 def extract_epsg_from_projection_text(text):
