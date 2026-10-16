@@ -39,9 +39,34 @@ from pathlib import Path
 try:
     from rudi_node_write.rudi_node_writer import RudiNodeWriter
     from rudi_node_write.connectors.rudi_node_auth import RudiNodeAuth
+    from rudi_node_write.rudi_types.rudi_meta import RudiMetadata
 except ImportError:
     print("rudi_node_write n'est pas installe : pip install --user rudi-node-write", file=sys.stderr)
     sys.exit(1)
+
+
+def _put_metadata(writer, rudi_metadata: dict) -> None:
+    """Equivalent de writer.put_metadata(rudi_metadata), sans son bug de serialisation :
+    to_json() (utilise en interne par put_metadata) perd ou corrompt les champs liste de
+    Serializable (summary/synopsis) -- clean_nones() les ramene a des list Python nues
+    avant le test isinstance(val, Serializable) du bloc liste, qui porte alors sur la
+    liste elle-meme (toujours fausse) au lieu de chaque element : les objets
+    RudiDictionaryEntry ressortent tels quels, non convertis en dict -- corps de requete
+    illisible cote noeud/portail (confirme en conditions reelles : PUT refuse avec une
+    erreur technique generique des qu'un summary/synopsis est present). to_json_str()
+    evite ca (json.dumps(default=...), qui convertit chaque objet individuellement).
+
+    RudiMetadata ne modelise par ailleurs que lang/text pour summary[] : le round-trip
+    from_json()/to_json_str() perd silencieusement un eventuel summary[].html deja present
+    (resume riche, voir pivot de moissonneuse-batteuse) -- reinjecte ici, apparie par lang."""
+    meta_obj = RudiMetadata.from_json(rudi_metadata)
+    meta_json = json.loads(meta_obj.to_json_str(ensure_ascii=True))
+    htmls = {e.get("lang"): e["html"] for e in rudi_metadata.get("summary", []) if e.get("html")}
+    for entry in meta_json.get("summary", []):
+        html = htmls.get(entry.get("lang"))
+        if html:
+            entry["html"] = html
+    writer.connector.put_catalog("resources", meta_json)
 
 MANIFEST_PATH = Path(os.environ.get("MANIFEST_PATH", Path(__file__).parent / "generated" / "manifest.json"))
 MANAGER_URL = os.environ.get("RUDI_MANAGER_URL", "http://localhost:3032/manager")
@@ -229,7 +254,7 @@ def plan_for_resource(writer, entry, apply_changes):
 
     header = f"  [{'ecrit' if apply_changes else 'a ecrire'}] {entry['resource_title'][:60]!r}"
     if apply_changes:
-        writer.put_metadata(resource)
+        _put_metadata(writer, resource)
     return "\n".join([header] + lines)
 
 
