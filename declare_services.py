@@ -146,6 +146,25 @@ def _media_name(protocol, layer, per_layer):
     return f"{base}__{layer}" if per_layer else base
 
 
+# Memes 4 cles, dans le meme ordre, que _connector_parameters_wms()/_wfs() de
+# moissonneuse-batteuse (translation/datagouv_to_rudi.py) -- reellement lues par le portail
+# (createWmsDataLayer/createWfsDataLayer) pour construire la requete GetMap/GetFeature.
+# Indispensable, pas cosmetique : un media SERVICE wms/wfs sans connector_parameters est
+# refuse par le noeud/portail avec une erreur technique generique (confirme en conditions
+# reelles le 2026-10-16 -- echec reproductible meme avec un seul media, aucune autre cause).
+def _connector_parameters(protocol, layers):
+    if protocol not in ("wms", "wfs"):
+        return None
+    versions = "1.3.0" if protocol == "wms" else "2.0.0"
+    formats = "image/png" if protocol == "wms" else "application/json"
+    return [
+        {"key": "versions", "value": versions},
+        {"key": "layer", "value": ",".join(layers) if layers else "n/a"},
+        {"key": "default_crs", "value": "EPSG:3857"},
+        {"key": "formats", "value": formats},
+    ]
+
+
 def _service_url(protocol, layer):
     base_url = {"wms": WMS_URL, "wfs": WFS_URL}.get(protocol)
     if base_url is not None:
@@ -199,7 +218,7 @@ def plan_for_resource(writer, entry, apply_changes):
             desired[media_name] = {
                 "interface_contract": conf["interface_contract"],
                 "url": _service_url(protocol, layer),
-                "connector_parameters": None,
+                "connector_parameters": _connector_parameters(protocol, layers),
                 "caption": caption,
             }
 
