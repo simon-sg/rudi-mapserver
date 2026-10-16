@@ -170,9 +170,16 @@ def collect_external_services(resources):
     return services
 
 
-def locate_file(media_id):
+def locate_file(media_id, media=None):
     matches = glob.glob(str(MEDIA_DIR / "*" / f"{media_id}_*"))
-    return Path(matches[0]) if matches else None
+    if matches:
+        return Path(matches[0])
+    # Volume local absent (noeud distant, ex. demo sur un noeud externe) : le media est
+    # deja en open data sans authentification, donc telechargeable directement par OGR/GDAL
+    # via /vsicurl/ -- ogrinfo/ogr2ogr et le VRT genere l'acceptent comme n'importe quelle
+    # autre chaine de connexion, sans telechargement manuel prealable.
+    url = (media or {}).get("connector", {}).get("url")
+    return f"/vsicurl/{url}" if url else None
 
 
 def extract_epsg_from_projection_text(text):
@@ -651,14 +658,21 @@ def run_cycle():
         # GetCapabilities, PAS depuis le <MetadataURL> -- voir KNOWN_ISSUES.md.
         abstract = pick_lang_text(res.get("summary")) or pick_lang_text(res.get("synopsis"))
         keywords = ",".join(res.get("keywords") or [])
-        path = locate_file(media_id)
+        path = locate_file(media_id, media)
         if not path:
             manifest["ignored"].append({"media_id": media_id, "reason": "fichier_absent_du_volume"})
             continue
+        is_remote = isinstance(path, str)
 
         mime = media["file_type"]
         try:
             if mime == "text/csv":
+                if is_remote:
+                    # sniff_csv_geometry lit le fichier via open() natif : pas de support
+                    # /vsicurl/, hors scope pour l'instant (nos sources distantes sont des
+                    # GeoJSON, pas des CSV a geometrie).
+                    manifest["ignored"].append({"media_id": media_id, "name": media.get("media_name"), "reason": "csv_distant_non_supporte"})
+                    continue
                 csv_info = sniff_csv_geometry(path, res)
                 if not csv_info:
                     manifest["ignored"].append({"media_id": media_id, "name": media.get("media_name"), "reason": "aucune_geometrie_reconnue"})
@@ -696,9 +710,11 @@ def run_cycle():
                 if not ms_type:
                     manifest["ignored"].append({"media_id": media_id, "name": media.get("media_name"), "reason": f"type_geometrie_non_gere:{vinfo['geom_type']}"})
                     continue
-                layer_name = slugify(path.stem)
+                layer_name = slugify(Path(media["media_name"]).stem if is_remote else path.stem)
                 fid_src_path, fid_src_layer, is_fgb = vinfo["data_path"], vinfo["layer_name"], False
-                if path.stat().st_size > FLATGEOBUF_THRESHOLD_BYTES:
+                # Taille locale inconnue pour une source distante (/vsicurl/) : pas de bascule
+                # FlatGeobuf dans ce cas, nos sources distantes restent petites pour l'instant.
+                if not is_remote and path.stat().st_size > FLATGEOBUF_THRESHOLD_BYTES:
                     fgb_path = materialize_flatgeobuf(media_id, vinfo["data_path"], vinfo["layer_name"])
                     if fgb_path:
                         fid_src_path, is_fgb = fgb_path, True
